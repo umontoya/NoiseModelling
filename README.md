@@ -14,8 +14,8 @@ This plugin is distributed under GPL 3 license and is developed by the DECIDE te
 :warning: The version 2.0.0 may contain error in the computation of the ground attenuation. The unit test 10 of NMPB have an error of 3.2 dB(A).
 
 For more information:
-* about NoiseModelling, [see the website] (http://noise-planet.org/),
-* about the code, [read the wiki] (wiki/Home.md),
+* about NoiseModelling, [see the website](http://noise-planet.org/),
+* about the code, [read the wiki](wiki/Home.md),
 * about OrbisGIS, [see the OrbisGIS website](http://www.orbisGIS.org).
 * follow us on twitter @Noise-Planet [![Twitter Follow](https://img.shields.io/twitter/follow/noise_planet.svg?style=social&label=Follow)](https://twitter.com/Noise_Planet?lang=en)
 
