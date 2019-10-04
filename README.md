@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/Ifsttar/NoiseModelling.svg?branch=cnossos)](https://travis-ci.org/Ifsttar/NoiseModelling)
+[![Build Status](https://travis-ci.org/Ifsttar/NoiseModelling.svg?branch=master)](https://travis-ci.org/Ifsttar/NoiseModelling)
 
 ![alt tag](http://noise-planet.org/assets/img/logos/Logo_noisemodelling.png)
 
