@@ -1,3 +1,5 @@
+> This documentation is only applicable to the version **2** (Nmpb) of NoiseModelling
+
 In 2017 NoiseM@p become Noise Modelling for the integration under the same umbrella project http://noise-planet.org .
 
 NoiseModelling is a plugin of the [OrbisGIS](http://www.orbisgis.org) software (an open-source geographic information system) that able to produce noise maps of cities, according to the french standard method for the road noise [emission][nmpb_E] and using the [NMPB][nmpb_P] method for the sound propagation.
