@@ -189,7 +189,7 @@ class TestImportExport extends JdbcTestCase {
     void testImportOSMXML() {
 
         new Import_OSM().exec(connection, [
-                "pathFile"      : TestImportExport.getResource("map.osm.gz").getPath(),
+                "pathFile"      : "/home/aumond/Téléchargements/Toulouse.osm.pbf", //TestImportExport.getResource("map.osm.gz").getPath()
                 "targetSRID"    : 2154,
                 "ignoreGround"  : false,
                 "ignoreBuilding": false,

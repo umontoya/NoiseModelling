@@ -231,7 +231,7 @@ def exec(Connection connection, input) {
     logger.info('OSM Read done')
 
     if (!ignoreBuilding) {
-        String tableName = "MAP_BUILDINGS_GEOM";
+        String tableName = "BUILDINGS";
 
         sql.execute("DROP TABLE IF EXISTS " + tableName)
         sql.execute("CREATE TABLE " + tableName + '''( 
@@ -241,27 +241,8 @@ def exec(Connection connection, input) {
         );''')
 
         for (Building building: handler.buildings) {
-            sql.execute("INSERT INTO " + tableName + " VALUES (" + building.id + ", ST_MakeValid(ST_SIMPLIFYPRESERVETOPOLOGY(ST_Transform(ST_GeomFromText('" + building.geom + "', 4326), "+srid+"),0.1)), " + building.height + ")")
+            sql.execute("INSERT INTO " + tableName + " VALUES (" + building.id + ", ST_Transform(ST_GeomFromText('" + building.geom + "', 4326), "+srid+"), " + building.height + ")")
         }
-
-        sql.execute('''
-            CREATE SPATIAL INDEX IF NOT EXISTS BUILDINGS_INDEX ON ''' + tableName + '''(the_geom);
-            -- List buildings that intersects with other buildings that have a greater area
-            DROP TABLE IF EXISTS tmp_relation_buildings_buildings;
-            CREATE TABLE tmp_relation_buildings_buildings AS SELECT s1.ID_WAY as PK_BUILDING, S2.ID_WAY as PK2_BUILDING FROM MAP_BUILDINGS_GEOM S1, MAP_BUILDINGS_GEOM S2 WHERE ST_AREA(S1.THE_GEOM) < ST_AREA(S2.THE_GEOM) AND S1.THE_GEOM && S2.THE_GEOM AND ST_DISTANCE(S1.THE_GEOM, S2.THE_GEOM) <= 0.1;
-            
-            -- Alter that small area buildings by removing shared area
-            DROP TABLE IF EXISTS tmp_buildings_truncated;
-            CREATE TABLE tmp_buildings_truncated AS SELECT PK_BUILDING, ST_DIFFERENCE(s1.the_geom, ST_BUFFER(ST_Collect(s2.the_geom), 0.1, 'join=mitre')) the_geom, s1.HEIGHT HEIGHT from tmp_relation_buildings_buildings r, MAP_BUILDINGS_GEOM s1, MAP_BUILDINGS_GEOM s2 WHERE PK_BUILDING = S1.ID_WAY AND PK2_BUILDING = S2.ID_WAY  GROUP BY PK_BUILDING;
-            
-            -- Merge original buildings with altered buildings 
-            DROP TABLE IF EXISTS BUILDINGS;
-            CREATE TABLE BUILDINGS(PK INTEGER PRIMARY KEY, THE_GEOM GEOMETRY, HEIGHT real) AS SELECT s.id_way, ST_SETSRID(s.the_geom, '''+srid+'''), s.HEIGHT from  MAP_BUILDINGS_GEOM s where id_way not in (select PK_BUILDING from tmp_buildings_truncated) UNION ALL select PK_BUILDING, ST_SETSRID(the_geom, '''+srid+'''), HEIGHT from tmp_buildings_truncated WHERE NOT st_isempty(the_geom);
-    
-            DROP TABLE IF EXISTS tmp_buildings_truncated;
-            DROP TABLE IF EXISTS tmp_relation_buildings_buildings;
-            DROP TABLE IF EXISTS MAP_BUILDINGS_GEOM;
-        ''');
 
         sql.execute("CREATE SPATIAL INDEX IF NOT EXISTS BUILDING_GEOM_INDEX ON " + "BUILDINGS" + "(THE_GEOM)")
 
@@ -380,6 +361,371 @@ public class OsmHandler implements Sink {
         } else if (entityContainer instanceof WayContainer) {
 
 
+            String vegetationParams = """{
+  "tags": {
+    "natural": [
+      "tree",
+      "wetland",
+      "grassland",
+      "tree_row",
+      "scrub",
+      "heath",
+      "sand",
+      "land",
+      "mud",
+      "wood"
+    ],
+    "landuse": [
+      "farmland",
+      "forest",
+      "grass",
+      "meadow",
+      "orchard",
+      "vineyard",
+      "village_green",
+      "allotments"
+    ],
+    "landcover": [],
+    "leisure": [
+      "park",
+      "garden"
+    ],
+    "vegetation": [
+      "grass"
+    ],
+    "barrier": [
+      "hedge"
+    ],
+    "fence_type": [
+      "hedge",
+      "wood"
+    ],
+    "hedge": [],
+    "wetland": [],
+    "vineyard": [],
+    "trees": [],
+    "crop": [],
+    "produce": [],
+    "surface": [
+      "grass"
+    ]
+  },
+  "columns": [
+    "natural",
+    "landuse",
+    "landcover",
+    "vegetation",
+    "barrier",
+    "fence_type",
+    "hedge",
+    "wetland",
+    "vineyard",
+    "trees",
+    "crop",
+    "produce",
+    "layer",
+    "surface"
+  ],
+  "type": {
+    "farmland": {
+      "landuse": [
+        "farmland"
+      ]
+    },
+    "tree": {
+      "natural": [
+        "tree"
+      ]
+    },
+    "wood": {
+      "landcover": [
+        "trees"
+      ],
+      "natural": [
+        "wood"
+      ]
+    },
+    "meadow": {
+      "landuse": [
+        "meadow"
+      ],
+      "wetland": [
+        "wet_meadow"
+      ]
+    },
+    "forest": {
+      "landuse": [
+        "forest"
+      ]
+    },
+    "scrub": {
+      "natural": [
+        "scrub"
+      ],
+      "landcover": [
+        "scrub"
+      ],
+      "landuse": [
+        "scrub"
+      ]
+    },
+    "grass": {
+      "natural": [
+        "grass"
+      ],
+      "landuse": [
+        "village_green",
+        "grass"
+      ],
+      "surface": [
+        "grass"
+      ]
+    },
+    "grassland": {
+      "landcover": [
+        "grass",
+        "grassland"
+      ],
+      "natural": [
+        "grassland"
+      ],
+      "vegetation": [
+        "grassland"
+      ],
+      "landuse": [
+        "grassland"
+      ]
+    },
+    "heath": {
+      "natural": [
+        "heath"
+      ]
+    },
+    "park": {
+      "leisure": [
+        "park"
+      ]
+    },
+    "garden": {
+      "leisure": [
+        "garden"
+      ],
+      "landuse": [
+        "allotments"
+      ]
+    },
+    "tree_row": {
+      "natural": [
+        "tree_row"
+      ],
+      "landcover": [
+        "tree_row"
+      ],
+      "barrier": [
+        "tree_row"
+      ]
+    },
+    "hedge": {
+      "barrier": [
+        "hedge"
+      ],
+      "natural": [
+        "hedge",
+        "hedge_bank"
+      ],
+      "fence_type": [
+        "hedge"
+      ],
+      "hedge": [
+        "hedge_bank"
+      ]
+    },
+    "mangrove": {
+      "wetland": [
+        "mangrove"
+      ]
+    },
+    "orchard": {
+      "landuse": [
+        "orchard"
+      ]
+    },
+    "vineyard": {
+      "landuse": [
+        "vineyard"
+      ],
+      "vineyard": [
+        "! no"
+      ]
+    },
+    "banana_plants": {
+      "trees": [
+        "banana_plants"
+      ],
+      "crop": [
+        "banana"
+      ]
+    },
+    "sugar_cane": {
+      "produce": [
+        "sugar_cane"
+      ],
+      "crop": [
+        "sugar_cane"
+      ]
+    },
+    "marsh": {
+      "wetland": [
+        "marsh"
+      ]
+    },
+    "saltmarsh": {
+      "wetland": [
+        "saltmarsh"
+      ]
+    },
+    "wetland": {
+      "landuse": [
+        "wetland"
+      ]
+    }
+  },
+  "class": {
+    "tree": "high",
+    "farmland": "low",
+    "wood": "high",
+    "forest": "high",
+    "scrub": "low",
+    "grass": "low",
+    "grassland": "low",
+    "heath": "low",
+    "park": "low",
+    "tree_row": "high",
+    "hedge": "high",
+    "meadow": "low",
+    "mangrove": "high",
+    "orchard": "high",
+    "vineyard": "low",
+    "banana_plants": "high",
+    "sugar_cane": "low",
+    "garden": "low",
+    "marsh": "low",
+    "saltmarsh": "low"
+  }
+}"""
+
+            String waterParams = """{
+  "tags": {
+    "natural": [
+      "water",
+      "waterway"
+    ],
+    "water": [],
+    "waterway": [],
+    "landuse": [
+      "basin",
+      " salt_pond"
+    ]
+  },
+  "columns": [
+    "natural",
+    "layer"
+  ]
+}"""
+            String imperviousParams = """{
+  "tags": {
+    "highway": [
+      "residential",
+      "pedestrian",
+      "rest_area"
+    ],
+    "amenity": [
+      "parking",
+      "bicycle_parking",
+      "car_sharing",
+      "parking_place"
+    ],
+    "leisure": [
+      "pitch"
+    ],
+    "railway": [
+      "platform"
+    ],
+    "landuse": [
+      "railway",
+      "construction",
+      "industrial",
+      "commercial"
+    ],
+    "area:aeroway": [
+      "runway"
+    ],
+    "aeroway": [
+      "apron"
+    ]
+  },
+  "columns": [
+    "highway",
+    "surface",
+    "amenity",
+    "area",
+    "leisure",
+    "parking",
+    "landuse",
+    "area:aeroway",
+    "aeroway",
+    "building"
+  ],
+  "type": {
+    "parking": {
+      "amenity": [
+        "parking",
+        "bicycle_parking",
+        "car_sharing",
+        "parking_place"
+      ],
+      "highway": [
+        "rest_area"
+      ]
+    },
+    "industrial": {
+      "landuse": [
+        "railway",
+        "construction",
+        "industrial"
+      ],
+      "area:aeroway": [
+        "runway"
+      ],
+      "aeroway": [
+        "apron"
+      ],
+      "railway": [
+        "platform"
+      ]
+    },
+    "commercial": {
+      "landuse": [
+        "commercial"
+      ]
+    },
+    "sport": {
+      "leisure": [
+        "pitch"
+      ]
+    },
+    "residential": {
+      "highway": [
+        "residential"
+      ]
+    },
+    "pedestrian": {
+      "highway": [
+        "pedestrian"
+      ]
+    }
+  }
+}"""
             // This is a copy of the GeoClimate file : buildingsParams.json (https://github.com/orbisgis/geoclimate/tree/master/osm/src/main/resources/org/orbisgis/geoclimate/osm)
             String buildingParams = """{
                   "tags": {
@@ -1044,15 +1390,33 @@ public class OsmHandler implements Sink {
                   }
                 }"""
 
-            def parametersMap = new JsonSlurper().parseText(buildingParams)
-            def tags = parametersMap.get("tags")
-            def columnsToKeep = parametersMap.get("columns")
-            def typeBuildings = parametersMap.get("type")
+            def buildingParametersMap = new JsonSlurper().parseText(buildingParams)
+            def buildingTags = buildingParametersMap.get("tags")
+            def buildingColumnsToKeep = buildingParametersMap.get("columns")
+            def typeBuildings = buildingParametersMap.get("type")
+
+            def imperviousParametersMap = new JsonSlurper().parseText(imperviousParams)
+            def imperviousTags = imperviousParametersMap.get("tags")
+            def imperviousColumnsToKeep = imperviousParametersMap.get("columns")
+            def typeImpervious = imperviousParametersMap.get("type")
+
+            def waterParametersMap = new JsonSlurper().parseText(waterParams)
+            def waterTags = waterParametersMap.get("tags")
+            def waterColumnsToKeep = waterParametersMap.get("columns")
+
+            def vegetationParametersMap = new JsonSlurper().parseText(vegetationParams)
+            def vegetationTags = vegetationParametersMap.get("tags")
+            def vegetationColumnsToKeep = vegetationParametersMap.get("columns")
+            def typeVegetation = vegetationParametersMap.get("type")
 
             nb_ways++;
             Way way = ((WayContainer) entityContainer).getEntity();
             ways.put(way.getId(), way);
             boolean isBuilding = false;
+            String buildingType
+            boolean isGround = false;
+            String groundType
+
             boolean isRoad = false;
             boolean isTunnel = false;
             double height = 4.0 + rand.nextDouble() * 2.1;
@@ -1060,19 +1424,31 @@ public class OsmHandler implements Sink {
             boolean closedWay = way.isClosed();
 
             for (Tag tag : way.getTags()) {
-                if (tags.containsKey(tag.getKey()) && closedWay){
-                    if (tags.get(tag.getKey()).isEmpty() || tags.get(tag.getKey()).any{it == (tag.getValue())})
+                if (buildingTags.containsKey(tag.getKey()) && closedWay){
+                    isBuilding = true;
+                    buildingType = 'generic';
+                    if (buildingTags.get(tag.getKey()).isEmpty() || buildingTags.get(tag.getKey()).any{it == (tag.getValue())})
                     {
-                        isBuilding = true;
+                        for (typeHighLevel in typeBuildings) {
+                            for (typeLowLevel in typeHighLevel.getValue()) {
+                                if (typeLowLevel.getKey() == (tag.getKey())) {
+                                    if (typeLowLevel.getValue().any { it == (tag.getValue()) }) {
+                                        buildingType = typeHighLevel.getKey();
+                                    }
+                                }
+
+                            }
+                        }
                     }
                 }
 
-                if ( closedWay && columnsToKeep.any{ (it == tag.getKey()) }) {
+                if ( closedWay && buildingColumnsToKeep.any{ (it == tag.getKey()) } ) {
                     for (typeHighLevel in typeBuildings) {
                         for (typeLowLevel in typeHighLevel.getValue()) {
                             if (typeLowLevel.getKey() == (tag.getKey())) {
                                 if (typeLowLevel.getValue().any { it == (tag.getValue()) }) {
                                     isBuilding = true;
+                                    buildingType = typeHighLevel.getKey();
                                 }
                             }
 
@@ -1080,24 +1456,92 @@ public class OsmHandler implements Sink {
                     }
                 }
 
+
+                if (imperviousTags.containsKey(tag.getKey()) && closedWay){
+                    if (imperviousTags.get(tag.getKey()).isEmpty() || imperviousTags.get(tag.getKey()).any{it == (tag.getValue())})
+                    {
+                        for (typeHighLevel in typeImpervious) {
+                            for (typeLowLevel in typeHighLevel.getValue()) {
+                                if (typeLowLevel.getKey() == (tag.getKey())) {
+                                    if (typeLowLevel.getValue().any { it == (tag.getValue()) }) {
+                                        isGround = true;
+                                        groundType = typeHighLevel.getKey();
+                                    }
+                                }
+
+                            }
+                        }
+                    }
+                }
+
+                if ( closedWay && imperviousColumnsToKeep.any{ (it == tag.getKey()) } ) {
+                    for (typeHighLevel in typeImpervious) {
+                        for (typeLowLevel in typeHighLevel.getValue()) {
+                            if (typeLowLevel.getKey() == (tag.getKey())) {
+                                if (typeLowLevel.getValue().any { it == (tag.getValue()) }) {
+                                    isGround = true;
+                                    groundType = typeHighLevel.getKey();
+                                }
+                            }
+
+                        }
+                    }
+                }
+
+                if (vegetationTags.containsKey(tag.getKey()) && closedWay){
+                    if (vegetationTags.get(tag.getKey()).isEmpty() || vegetationTags.get(tag.getKey()).any{it == (tag.getValue())})
+                    {
+                        for (typeHighLevel in typeVegetation) {
+                            for (typeLowLevel in typeHighLevel.getValue()) {
+                                if (typeLowLevel.getKey() == (tag.getKey())) {
+                                    if (typeLowLevel.getValue().any { it == (tag.getValue()) }) {
+                                        isGround = true;
+                                        groundType = typeHighLevel.getKey();
+                                    }
+                                }
+
+                            }
+                        }
+                    }
+                }
+
+                if ( closedWay && vegetationColumnsToKeep.any{ (it == tag.getKey()) } ) {
+                    for (typeHighLevel in typeVegetation) {
+                        for (typeLowLevel in typeHighLevel.getValue()) {
+                            if (typeLowLevel.getKey() == (tag.getKey())) {
+                                if (typeLowLevel.getValue().any { it == (tag.getValue()) }) {
+                                    isGround = true;
+                                    groundType = typeHighLevel.getKey();
+                                }
+                            }
+
+                        }
+                    }
+                }
+
+                if (waterTags.containsKey(tag.getKey()) && closedWay){
+                    if (waterTags.get(tag.getKey()).isEmpty() || waterTags.get(tag.getKey()).any{it == (tag.getValue())})
+                    {
+                        isGround = true;
+                        groundType = "water";
+                    }
+                }
+
+                if ( closedWay && waterColumnsToKeep.any{ (it == tag.getKey()) } ) {
+                    isGround = true;
+                    groundType = "water";
+                }
+
+
                 if ("tunnel".equalsIgnoreCase(tag.getKey()) && "yes".equalsIgnoreCase(tag.getValue())) {
                     isTunnel = true;
                 }
                 if ("highway".equalsIgnoreCase((tag.getKey()))) {
                     isRoad = true
                 }
-                if (isBuilding) {
-                    if (!trueHeightFound && "building:levels".equalsIgnoreCase(tag.getKey())) {
-                        height = height - 4 + Double.parseDouble(tag.getValue().replaceAll("[^0-9]+", "")) * 3.0;
-                    }
-                    if ("height".equalsIgnoreCase(tag.getKey())) {
-                        height = Double.parseDouble(tag.getValue().replaceAll("[^0-9]+", ""));
-                        trueHeightFound = true;
-                    }
-                }
             }
             if (!ignoreBuildings && isBuilding && closedWay) {
-                buildings.add(new Building(way, height));
+                buildings.add(new Building(way, buildingType));
                 nb_buildings++;
             }
             if (!ignoreRoads && isRoad) {
@@ -1107,8 +1551,8 @@ public class OsmHandler implements Sink {
                 roads.add(new Road(way));
                 nb_roads++;
             }
-            if (!ignoreGround && !isBuilding && !isRoad && closedWay) {
-                grounds.add(new Ground(way));
+            if (!ignoreGround && !isBuilding && !isRoad  && isGround && closedWay) {
+                grounds.add(new Ground(way, groundType));
                 nb_grounds++;
             }
         } else if (entityContainer instanceof RelationContainer) {
@@ -1247,13 +1691,14 @@ public class Building {
     Geometry geom;
     double height = 0.0;
 
-    Building(Way way) {
+    Building(Way way, String type) {
         this.way = way;
         this.id = way.getId();
-        double h = 4.0 + rand.nextDouble() * 2.1;
+        double h = 4.0 + Math.random()* 2.1;
         boolean trueHeightFound = false;
+
         for (Tag tag : way.getTags()) {
-            if (!trueHeightFound && "building:levels".equalsIgnoreCase(tag.getKey())) {
+            if (!trueHeightFound && "building:levels".equalsIgnoreCase(tag.getKey()) && !tag.getValue().replaceAll("[^0-9]+", "").isEmpty() ) {
                 h = h - 4 + Double.parseDouble(tag.getValue().replaceAll("[^0-9]+", "")) * 3.0;
             }
             if ("height".equalsIgnoreCase(tag.getKey())) {
@@ -1263,6 +1708,7 @@ public class Building {
         }
         this.height = h;
     }
+
     Building(Way way, double height) {
         this.way = way;
         this.id = way.getId();
@@ -1401,239 +1847,77 @@ public class Ground {
     int priority = 0;
     float coeff_G = 0.0;
 
-    Ground(Way way) {
+    Ground(Way way, String type) {
         this.way = way;
         this.id = way.getId();
 
-        String primaryTagKey = "";
-        String primaryTagValue = "";
-        String secondaryTagKey = "";
-        String secondaryTagValue = "";
 
+       String acoustics_json ="""{
+  "default_g": 0,
+  "g": {
+    "asphalt": 0.1,
+    "water": 0.05,
+    "low_vegetation": 1,
+    "high_vegetation": 1,
+    "impervious": 0.1,
+    "tree": 1,
+    "wood": 1,
+    "forest": 1,
+    "tree_row": 0.1,
+    "hedge": 0.5,
+    "mangrove": 1,
+    "orchard": 0.8,
+    "banana_plants": 0.8,
+    "farmland": 0.7,
+    "scrub": 0.7,
+    "grass": 0.8,
+    "grassland": 0.8,
+    "heath": 1,
+    "park": 0.7,
+    "meadow": 1,
+    "vineyard": 0.8,
+    "sugar_cane": 0.8,
+    "garden":0.8,
+    "marsh": 0.3,
+    "saltmarsh": 0.2
+  },
+  "layer_priorities": {
+    "asphalt": 10,
+    "water": 100,
+    "low_vegetation": 50,
+    "high_vegetation": 80,
+    "impervious": 10,
+    "tree": 90,
+    "wood": 80,
+    "forest": 80,
+    "tree_row": 50,
+    "hedge": 50,
+    "mangrove": 80,
+    "orchard": 80,
+    "banana_plants": 80,
+    "farmland": 80,
+    "scrub": 80,
+    "grass": 80,
+    "grassland": 80,
+    "heath": 80,
+    "park": 80,
+    "meadow": 80,
+    "vineyard": 80,
+    "sugar_cane": 80,
+    "garden":80,
+    "marsh": 80,
+    "saltmarsh": 80
+  }
+}"""
+        def acousticMap = new JsonSlurper().parseText(acoustics_json)
+        def priorities = acousticMap.get("layer_priorities")
+        def g = acousticMap.get("g")
         for (Tag tag : way.getTags()) {
-            String key = tag.getKey()
-            String value = tag.getValue()
-            if (["aeroway","amenity","landcover","landuse","leisure","natural","water","waterway"].contains(key)) {
-                primaryTagKey = key
-                primaryTagValue = value
+            if (g.containsKey(type)) {
+                this.coeff_G = g.get(type)
             }
-            if (["parking","covered","surface","wetland"].contains(key)) {
-                secondaryTagKey = key
-                secondaryTagValue = value
-            }
-        }
-        if (primaryTagKey == "aeroway" &&
-                ["taxiway","runway","aerodrome","helipad","apron","taxilane"].contains(primaryTagValue)) {
-            priority = 29
-            coeff_G = 0.1
-        }
-        if (primaryTagKey == "amenity") {
-            if (primaryTagValue == "taxi") {
-                priority = 22
-                coeff_G = 0.1
-            }
-            if (primaryTagValue == "parking" && secondaryTagKey == "parking" && !secondaryTagValue.contains("underground")) {
-                priority = 22
-                coeff_G = 0.1
-            }
-        }
-        if (primaryTagKey == "landcover") {
-            if (primaryTagValue == "water") {
-                priority = 7
-                coeff_G = 0.3
-            }
-            if (["bedrock","bare_ground","concrete","asphalt"].contains(primaryTagValue)) {
-                priority = 8
-                coeff_G = 0.1
-            }
-            if (primaryTagValue == "sand") {
-                priority = 9
-                coeff_G = 0.2
-            }
-            if (["scrub","gravel"].contains(primaryTagValue)) {
-                priority = 10
-                coeff_G = 0.7
-            }
-            if (["bushes","vegetation"].contains(primaryTagValue)) {
-                priority = 11
-                coeff_G = 0.8
-            }
-            if (["flowerbed","trees, grass","trees","grass","tree","grassland","wood"].contains(primaryTagValue)) {
-                priority = 12
-                coeff_G = 1.0
-            }
-        }
-        if (primaryTagKey == "landuse") {
-            if (primaryTagValue == "reservoir" && secondaryTagKey == "covered" && secondaryTagValue == "no") {
-                priority = 7
-                coeff_G = 0.3
-            }
-            if (["residential","industrial","retail","harbour","quarry","landfill",
-                 "construction","commercial","garages","railway","basin","farmyard"].contains(primaryTagValue)) {
-                priority = 23
-                coeff_G = 0.1
-            }
-            if (primaryTagValue == "brownfield") {
-                priority = 24
-                coeff_G = 0.3
-            }
-            if (primaryTagValue == "salt_pond") {
-                priority = 25
-                coeff_G = 0.5
-            }
-            if (["farmland","allotements","logging","plant_nursery","farm"].contains(primaryTagValue)) {
-                priority = 26
-                coeff_G = 0.7
-            }
-            if (["vineyard","orchard","greenfield","village_green"].contains(primaryTagValue)) {
-                priority = 27
-                coeff_G = 0.8
-            }
-            if (["meadow","forest","grass"].contains(primaryTagValue)) {
-                priority = 28
-                coeff_G = 1.0
-            }
-        }
-        if (primaryTagKey == "leisure") {
-            if (primaryTagValue == "pitch" && secondaryTagKey == "surface") {
-                if (["asphalt","concrete","concrete:plate"].contains(secondaryTagValue)) {
-                    priority = 1
-                    coeff_G = 0.1
-                }
-                if (["dirt","compacted","sand","wood","clay"].contains(secondaryTagValue)) {
-                    priority = 2
-                    coeff_G = 0.2
-                }
-                if (["ground","fine_gravel","earth","mud"].contains(secondaryTagValue)) {
-                    priority = 4
-                    coeff_G = 0.5
-                }
-                if (["gravel"].contains(secondaryTagValue)) {
-                    priority = 5
-                    coeff_G = 0.7
-                }
-                if (["grass"].contains(secondaryTagValue)) {
-                    priority = 6
-                    coeff_G = 1.0
-                }
-            }
-            if (primaryTagValue == "marina") {
-                priority = 30
-                coeff_G = 0.2
-            }
-            if (primaryTagValue == "park") {
-                priority = 31
-                coeff_G = 0.7
-            }
-            if (["garden","nature_reserve","golf_course"].contains(primaryTagValue)) {
-                priority = 32
-                coeff_G = 1.0
-            }
-        }
-        if (primaryTagKey == "natural") {
-            if (primaryTagValue == "beach" && secondaryTagKey == "surface") {
-                if (secondaryTagValue == "sand") {
-                    priority = 2
-                    coeff_G = 0.2
-                }
-                if (secondaryTagValue == "shingle") {
-                    priority = 3
-                    coeff_G = 0.3
-                }
-                if (secondaryTagValue == "gravel" || secondaryTagValue == "pebbles") {
-                    priority = 5
-                    coeff_G = 0.7
-                }
-            }
-            if (primaryTagValue == "wetland" && secondaryTagKey == "wetland") {
-                if (secondaryTagValue == "tidalflat") {
-                    priority = 14
-                    coeff_G = 0.2
-                }
-                if (secondaryTagValue == "saltern") {
-                    priority = 15
-                    coeff_G = 0.3
-                }
-                if (secondaryTagValue == "marsh") {
-                    priority = 16
-                    coeff_G = 0.4
-                }
-                if (secondaryTagValue == "reebed") {
-                    priority = 18
-                    coeff_G = 0.6
-                }
-                if (secondaryTagValue == "bog") {
-                    priority = 19
-                    coeff_G = 0.7
-                }
-                if (secondaryTagValue == "mangrove") {
-                    priority = 21
-                    coeff_G = 1.0
-                }
-                if (["swamp","saltmarsh","wet_meadow"].contains(secondaryTagValue)) {
-                    priority = 20
-                    coeff_G = 0.9
-                }
-            }
-            if (primaryTagValue == "bare_rock") {
-                priority = 13
-                coeff_G = 0.1
-            }
-            if (primaryTagValue == "bay") {
-                priority = 7
-                coeff_G = 0.3
-            }
-            if (primaryTagValue == "glacier") {
-                priority = 13
-                coeff_G = 0.1
-            }
-            if (primaryTagValue == "heath" || primaryTagValue == "grassland") {
-                priority = 21
-                coeff_G = 1.0
-            }
-            if (primaryTagValue == "rock") {
-                priority = 13
-                coeff_G = 0.1
-            }
-            if (primaryTagValue == "sand") {
-                priority = 14
-                coeff_G = 0.2
-            }
-            if (primaryTagValue == "scree") {
-                priority = 17
-                coeff_G = 0.5
-            }
-            if (primaryTagValue == "scrub") {
-                priority = 19
-                coeff_G = 0.7
-            }
-            if (primaryTagValue == "shingle") {
-                priority = 15
-                coeff_G = 0.3
-            }
-            if (primaryTagValue == "water") {
-                priority = 7
-                coeff_G = 0.3
-            }
-            if (primaryTagValue == "wood") {
-                priority = 21
-                coeff_G = 1.0
-            }
-        }
-        if (primaryTagKey == "water") {
-            if (["pond","lake","reservoir","river","wastewater","canal","oxbow",
-                 "salt","lagoon","yes","ditch","salt_pool","tidal","stream",
-                 "fishpond","riverbank","pool","lock","natural","shallow",
-                 "salt_pond","lake;pond","marsh","well","reflecting_pool",
-                 "fountain","stream;river","not_deep"].contains(primaryTagValue)) {
-                priority = 7
-                coeff_G = 0.3
-            }
-        }
-        if (primaryTagKey == "waterway") {
-            if (["stream","riverbank","canal","artificial"].contains(primaryTagValue)) {
-                priority = 7
-                coeff_G = 0.3
+            if (priorities.containsKey(type)) {
+                this.priority = priorities.get(type)
             }
         }
     }

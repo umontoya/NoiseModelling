@@ -294,15 +294,25 @@ def exec(Connection connection, input) {
             CASEWHEN(TYPE = 'raceway', 1.5,
             CASEWHEN(TYPE = 'road', 1.5,
             CASEWHEN(TYPE = 'unclassified', 1.5, 0))))))))))))))))))),
-            PK
-            FROM PEDESTRIAN_WAYS;
-            
+                PK
+                FROM PEDESTRIAN_WAYS;
+              
             -- Create Road + Sidewalk layer
             DROP TABLE roads_sidewalk IF EXISTS;
             CREATE TABLE roads_sidewalk(the_geom geometry) AS
             SELECT ST_UNION(ST_ACCUM(ST_PRECISIONREDUCER(ST_BUFFER(a.the_geom,a.wb + 2*b.lt),0.1))) FROM ROADS a, sidewalk b WHERE a.PK = b.PK;
+               
+            -- Create Road + Sidewalk layer
+            DROP TABLE roads_sidewalk_smalllt IF EXISTS;
+            CREATE TABLE roads_sidewalk_smalllt(the_geom geometry) AS
+            SELECT ST_UNION(ST_ACCUM(ST_PRECISIONREDUCER(ST_BUFFER(a.the_geom,a.wb + 2*b.lt*0.5-0.1),0.1))) FROM ROADS a, sidewalk b WHERE a.PK = b.PK;
+                  
+            -- Create Road + Sidewalk layer
+            DROP TABLE roads_sidewalk_centerline IF EXISTS;
+            CREATE TABLE roads_sidewalk_centerline(the_geom geometry) AS
+            SELECT ST_ToMultiLine(ST_UNION(ST_ACCUM(ST_PRECISIONREDUCER(ST_BUFFER(a.the_geom,a.wb + 2*b.lt*0.5),0.1)))) FROM ROADS a, sidewalk b WHERE a.PK = b.PK;
             DROP TABLE sidewalk IF EXISTS;
-            
+                        
             -- Create PedestrianNetwork
             DROP TABLE pedestrian_streets IF EXISTS;
              CREATE TABLE pedestrian_streets AS SELECT ST_UNION(ST_ACCUM(ST_PRECISIONREDUCER(ST_BUFFER(the_geom,3.0),0.1))) the_geom FROM PEDESTRIAN_WAYS
@@ -315,6 +325,52 @@ def exec(Connection connection, input) {
             OR TYPE = 'service'
             OR TYPE = 'sidewalk'
             OR TYPE = 'steps';
+            
+                       -- Create PedestrianNetwork
+            DROP TABLE pedestrian_streets_without_buffer IF EXISTS;
+             CREATE TABLE pedestrian_streets_without_buffer AS SELECT ST_UNION(ST_ACCUM(the_geom)) the_geom FROM PEDESTRIAN_WAYS
+            WHERE
+            TYPE = 'pedestrian'
+            OR TYPE = 'path'
+            OR TYPE = 'footway'
+            OR TYPE = 'living_street'
+            OR TYPE = 'crossing'
+            OR TYPE = 'service'
+            OR TYPE = 'sidewalk'
+            OR TYPE = 'steps';
+            
+            -- Merge Paths from Sidewalk and footways    
+            DROP TABLE PEDESTRIAN_NETWORK_UNION IF EXISTS;
+            CREATE TABLE PEDESTRIAN_NETWORK_UNION AS SELECT ST_FORCE2D(a.the_geom) the_geom FROM PEDESTRIAN_STREETS_WITHOUT_BUFFER a UNION SELECT b.the_geom the_geom FROM  roads_sidewalk_centerline b;
+            
+            DROP TABLE PEDESTRIAN_NETWORK_Accum IF EXISTS;
+            CREATE TABLE PEDESTRIAN_NETWORK_Accum AS SELECT ST_UNION(ST_ACCUM(the_geom)) the_geom FROM PEDESTRIAN_NETWORK_UNION;
+                       
+            DROP TABLE PEDESTRIAN_NETWORK IF EXISTS;
+            CREATE TABLE PEDESTRIAN_NETWORK AS SELECT * FROM  ST_Explode('PEDESTRIAN_NETWORK_Accum');
+            
+            DROP TABLE PEDESTRIAN_NETWORK_FILTERED  IF EXISTS;
+            CREATE TABLE PEDESTRIAN_NETWORK_FILTERED AS SELECT the_geom FROM  PEDESTRIAN_NETWORK WHERE  ST_CROSSES(the_geom,SELECT the_geom FROM roads_sidewalk_smalllt);
+            
+            DROP TABLE PEDESTRIAN_NET_FILT IF EXISTS;
+            CREATE TABLE PEDESTRIAN_NET_FILT AS SELECT the_geom FROM PEDESTRIAN_STREETS_WITHOUT_BUFFER WHERE ST_CROSSES(the_geom,SELECT the_geom FROM ROADS_SIDEWALK_SMALLLT);
+            
+            -- We filter out the segments that overlap the sidewalks
+            DROP TABLE filtered_segments IF EXISTS;
+            CREATE TABLE filtered_segments AS
+            SELECT ST_Intersection(ml.the_geom, mp.the_geom) AS segment
+            FROM PEDESTRIAN_STREETS_WITHOUT_BUFFER ml, ROADS_SIDEWALK_SMALLLT mp
+            WHERE ST_Intersects(ml.the_geom, mp.the_geom);
+            
+            --Explode in order to obtain each segment with an EXPLOD_ID
+            DROP TABLE explode_segments IF EXISTS;
+            CREATE TABLE explode_segments AS SELECT * FROM ST_Explode('FILTERED_SEGMENTS');
+            
+            --Pedestrian network filtered final
+            DROP TABLE PEDESTRIANS_NETWORK IF EXISTS;
+            CREATE TABLE PEDESTRIANS_NETWORK AS SELECT * FROM PEDESTRIAN_NETWORK pp
+            WHERE pp.EXPLOD_ID NOT IN (SELECT pn.EXPLOD_ID FROM PEDESTRIAN_NETWORK pn, EXPLODE_SEGMENTS es WHERE ST_COVERS(pn.THE_GEOM, es.segment));
+            DROP TABLE ROADS_SIDEWALK_SMALLLT,pedestrian_streets_without_buffer, roads_sidewalk_centerline,WAYS, PEDESTRIAN_NETWORK_UNION,PEDESTRIAN_NETWORK, PEDESTRIAN_NETWORK_FILTERED, PEDESTRIAN_NETWORK_Accum,PEDESTRIAN_NET_FILT, filtered_segments,explode_segments   IF EXISTS;
             
             -- Create Full area where pedestrians can be
             DROP TABLE RoadsAndPedestrianStreets IF EXISTS;
