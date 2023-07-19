@@ -18,9 +18,12 @@ import org.h2gis.functions.io.dbf.DBFRead
 import org.h2gis.functions.io.shp.SHPRead
 import org.h2gis.utilities.JDBCUtilities
 import org.junit.Test
+import org.noise_planet.noisemodelling.wps.Database_Manager.Display_Database
+import org.noise_planet.noisemodelling.wps.Experimental.PedestrianLocalisation
 import org.noise_planet.noisemodelling.wps.Geometric_Tools.Set_Height
 import org.noise_planet.noisemodelling.wps.Import_and_Export.Import_File
 import org.noise_planet.noisemodelling.wps.Import_and_Export.Export_Table
+import org.noise_planet.noisemodelling.wps.Import_and_Export.Import_OSM_Pedestrian
 import org.noise_planet.noisemodelling.wps.NoiseModelling.Noise_level_from_source
 import org.noise_planet.noisemodelling.wps.NoiseModelling.Noise_level_from_traffic
 import org.noise_planet.noisemodelling.wps.NoiseModelling.Railway_Emission_from_Traffic
@@ -45,6 +48,38 @@ class TestNoiseModelling extends JdbcTestCase {
         assertEquals("Calculation Done ! The table LW_ROADS has been created.", res)
     }
 
+    @Test
+    void test_Pedestrian_Positioning() {
+
+        new Import_OSM_Pedestrian().exec(connection, [
+                "pathFile"      : "/home/aumond/Téléchargements/Toulouse2.osm.pbf",
+                "targetSRID"    : 2154
+        ]);
+       // /home/aumond/Téléchargements/
+       //         TestImportExport.getResource("map.osm.pbf").getPath()
+        new PedestrianLocalisation().exec(connection, [
+                "walkableArea"      : "PEDESTRIAN_AREA",
+                "cellSize"    : 25,
+                "pointsOfInterests" : "PEDESTRIAN_POIS"
+        ]);
+
+
+        new Export_Table().exec(connection,
+                ["exportPath"   : "target/pedestrian_POIS.geojson",
+                 "tableToExport": "PEDESTRIAN_POIS"])
+
+        new Export_Table().exec(connection,
+                ["exportPath"   : "target/PEDESTRIANS.geojson",
+                 "tableToExport": "PEDESTRIANS"])
+
+
+
+
+        String res = new Display_Database().exec(connection, [])
+
+        assertEquals("BUILDINGS</br></br>GROUND</br></br>PEDESTRIAN_AREA</br></br>PEDESTRIAN_POIS</br></br>PEDESTRIAN_WAYS</br></br>", res)
+
+    }
 
     @Test
     void testRailWayEmissionFromDEN() {
