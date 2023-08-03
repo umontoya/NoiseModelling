@@ -209,6 +209,7 @@ def exec(connection, input) {
     sql.execute("CREATE TABLE PEDESTRIANS AS SELECT the_geom the_geom, GREATEST(FLOOR(probability*10)+  CASE WHEN RAND() < (probability*10 - FLOOR(probability*10)) THEN 1 ELSE 0 END,1) AS nbPedestrian FROM PEDESTRIANS_PROBABILITY WHERE RAND() < probability*10;")
     sql.execute("DROP TABLE PEDESTRIANS_PROBABILITY IF EXISTS;")
 
+    sql.execute("ALTER TABLE PEDESTRIANS ADD PK INT AUTO_INCREMENT PRIMARY KEY;")
 
     return ["Process done. Table of outputs created !"]
 }

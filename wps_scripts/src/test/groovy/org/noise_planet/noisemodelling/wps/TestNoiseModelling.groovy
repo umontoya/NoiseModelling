@@ -28,6 +28,7 @@ import org.noise_planet.noisemodelling.wps.NoiseModelling.Noise_level_from_sourc
 import org.noise_planet.noisemodelling.wps.NoiseModelling.Noise_level_from_traffic
 import org.noise_planet.noisemodelling.wps.NoiseModelling.Railway_Emission_from_Traffic
 import org.noise_planet.noisemodelling.wps.NoiseModelling.Road_Emission_from_Traffic
+import org.noise_planet.noisemodelling.wps.NoiseModelling.Voice_Emission_from_Pedestrians
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 /**
@@ -57,12 +58,14 @@ class TestNoiseModelling extends JdbcTestCase {
         ]);
        // /home/aumond/Téléchargements/
        //         TestImportExport.getResource("map.osm.pbf").getPath()
-        new PedestrianLocalisation().exec(connection, [
+       new PedestrianLocalisation().exec(connection, [
                 "walkableArea"      : "PEDESTRIAN_AREA",
                 "cellSize"    : 25,
                 "pointsOfInterests" : "PEDESTRIAN_POIS"
         ]);
 
+        new Voice_Emission_from_Pedestrians().exec(connection, [
+                "tablePedestrian"      : "PEDESTRIANS"])
 
         new Export_Table().exec(connection,
                 ["exportPath"   : "target/pedestrian_POIS.geojson",
