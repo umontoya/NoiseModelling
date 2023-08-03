@@ -54,15 +54,15 @@ class TestNoiseModelling extends JdbcTestCase {
     @Test
     void test_Pedestrian_Positioning() {
 
-        new Import_OSM_Pedestrian().exec(connection, [
-                "pathFile"      : "/home/aumond/Téléchargements/Toulouse2.osm.pbf",
-                "targetSRID"    : 2154
-        ]);
+        //new Import_OSM_Pedestrian().exec(connection, [
+        //        "pathFile"      : "/home/aumond/Téléchargements/Toulouse2.osm.pbf",
+        //        "targetSRID"    : 2154
+        //]);
 
-      /*  new Import_OSM_Pedestrian().exec(connection, [
+        new Import_OSM_Pedestrian().exec(connection, [
                 "pathFile"      : TestImportExport.getResource("map.osm.pbf").getPath(),
                 "targetSRID"    : 2154
-        ]);*/
+        ]);
 
        new PedestrianLocalisation().exec(connection, [
                 "walkableArea"      : "PEDESTRIAN_AREA",
