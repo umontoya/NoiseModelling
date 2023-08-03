@@ -29,6 +29,8 @@ import org.noise_planet.noisemodelling.wps.NoiseModelling.Noise_level_from_traff
 import org.noise_planet.noisemodelling.wps.NoiseModelling.Railway_Emission_from_Traffic
 import org.noise_planet.noisemodelling.wps.NoiseModelling.Road_Emission_from_Traffic
 import org.noise_planet.noisemodelling.wps.NoiseModelling.Voice_Emission_from_Pedestrians
+import org.noise_planet.noisemodelling.wps.Receivers.Delaunay_Grid
+import org.noise_planet.noisemodelling.wps.Receivers.Regular_Grid
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 /**
@@ -56,8 +58,12 @@ class TestNoiseModelling extends JdbcTestCase {
                 "pathFile"      : "/home/aumond/Téléchargements/Toulouse2.osm.pbf",
                 "targetSRID"    : 2154
         ]);
-       // /home/aumond/Téléchargements/
-       //         TestImportExport.getResource("map.osm.pbf").getPath()
+
+      /*  new Import_OSM_Pedestrian().exec(connection, [
+                "pathFile"      : TestImportExport.getResource("map.osm.pbf").getPath(),
+                "targetSRID"    : 2154
+        ]);*/
+
        new PedestrianLocalisation().exec(connection, [
                 "walkableArea"      : "PEDESTRIAN_AREA",
                 "cellSize"    : 25,
@@ -67,6 +73,24 @@ class TestNoiseModelling extends JdbcTestCase {
         new Voice_Emission_from_Pedestrians().exec(connection, [
                 "tablePedestrian"      : "PEDESTRIANS"])
 
+
+        new Regular_Grid().exec(connection,  ["fenceTableName"     : "BUILDINGS",
+                                              "delta"              : 25])
+
+        new Set_Height().exec(connection,  ["tableName"     : "LW_PEDESTRIAN",
+                                            "height"              : 1.5])
+
+        new Set_Height().exec(connection,  ["tableName"     : "RECEIVERS",
+                                            "height"              : 1.5])
+
+        new Noise_level_from_source().exec(connection,
+                ["tableBuilding"   : "BUILDINGS",
+                 "tableSources"   : "LW_PEDESTRIAN",
+                 "tableReceivers": "RECEIVERS",
+                 "confSkipLevening": true,
+                 "confSkipLnight": true,
+                 "confSkipLden": true])
+
         new Export_Table().exec(connection,
                 ["exportPath"   : "target/pedestrian_POIS.geojson",
                  "tableToExport": "PEDESTRIAN_POIS"])
@@ -75,6 +99,9 @@ class TestNoiseModelling extends JdbcTestCase {
                 ["exportPath"   : "target/PEDESTRIANS.geojson",
                  "tableToExport": "PEDESTRIANS"])
 
+        new Export_Table().exec(connection,
+                ["exportPath"   : "target/LDAY_GEOM_PEDESTRIAN.geojson",
+                 "tableToExport": "LDAY_GEOM"])
 
 
 

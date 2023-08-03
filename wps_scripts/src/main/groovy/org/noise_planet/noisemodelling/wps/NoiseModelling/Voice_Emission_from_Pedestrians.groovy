@@ -208,9 +208,9 @@ def exec(Connection connection, input) {
             def results = ldenData.computeLw(rs)
             // fill the LW_PEDESTRIAN table
             ps.addBatch(rs.getLong(pkIndex) as Integer, geo as Geometry,
-                    70 + 10*Math.log(nbPedestrianOnPoint) as Double, 70+ 10*Math.log(nbPedestrianOnPoint) as Double, 70+ 10*Math.log(nbPedestrianOnPoint) as Double,
-                    70+ 10*Math.log(nbPedestrianOnPoint) as Double, 70+ 10*Math.log(nbPedestrianOnPoint) as Double, 70 + 10*Math.log(nbPedestrianOnPoint) as Double,
-                    70+ 10*Math.log(nbPedestrianOnPoint) as Double, 70+ 10*Math.log(nbPedestrianOnPoint) as Double, "DAY")
+                    70 + 10*Math.log10(nbPedestrianOnPoint) as Double, 70+ 10*Math.log10(nbPedestrianOnPoint) as Double, 70+ 10*Math.log10(nbPedestrianOnPoint) as Double,
+                    70+ 10*Math.log10(nbPedestrianOnPoint) as Double, 70+ 10*Math.log10(nbPedestrianOnPoint) as Double, 70 + 10*Math.log10(nbPedestrianOnPoint) as Double,
+                    70+ 10*Math.log10(nbPedestrianOnPoint) as Double, 70+ 10*Math.log10(nbPedestrianOnPoint) as Double, "DAY")
         }
     }
 
