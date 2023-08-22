@@ -42,9 +42,9 @@ import java.sql.ResultSet
 import java.sql.SQLException
 
 title = 'Compute voice emission noise map from pedestrians table.'
-description = '&#10145;&#65039; -----------etails). </br>' +
+description = '&#10145;&#65039; -----------details). </br>' +
               '<hr>' +
-              '&#x2705; The output table is called: <b>LW_VOICES </b> '
+              '&#x2705; The output table is called: <b>LW_PEDESTRIAN </b> '
 
 inputs = [
         tablePedestrian: [
@@ -53,19 +53,18 @@ inputs = [
                 description: "<b>Name of the Pedestrians table.</b>  </br>  " +
                         "<br>  This function recognize the following columns (* mandatory) : </br><ul>" +
                         "<li><b> PK </b>* : an identifier. It shall be a primary key (INTEGER, PRIMARY KEY)</li>" +
-                            "<li><b> LV_D </b><b>LV_E </b><b>LV_N </b> : Hourly average light vehicle count (6-18h)(18-22h)(22-6h) (DOUBLE)</li>" +
-                        "<li><b> MV_D </b><b>MV_E </b><b>MV_N </b> : Hourly average medium heavy vehicles, delivery vans > 3.5 tons,  buses, touring cars, etc. with two axles and twin tyre mounting on rear axle count (6-18h)(18-22h)(22-6h) (DOUBLE)</li>" +
-                        "<li><b> HGV_D </b><b> HGV_E </b><b> HGV_N </b> :  Hourly average heavy duty vehicles, touring cars, buses, with three or more axles (6-18h)(18-22h)(22-6h) (DOUBLE)</li>" +
-                        "<li><b> WAV_D </b><b> WAV_E </b><b> WAV_N </b> :  Hourly average mopeds, tricycles or quads &le; 50 cc count (6-18h)(18-22h)(22-6h) (DOUBLE)</li>" +
-                        "<li><b> WBV_D </b><b> WBV_E </b><b> WBV_N </b> :  Hourly average motorcycles, tricycles or quads > 50 cc count (6-18h)(18-22h)(22-6h) (DOUBLE)</li>" +
-                        "<li><b> LV_SPD_D </b><b> LV_SPD_E </b><b>LV_SPD_N </b> :  Hourly average light vehicle speed (6-18h)(18-22h)(22-6h) (DOUBLE)</li>" +
-                        "<li><b> MV_SPD_D </b><b> MV_SPD_E </b><b>MV_SPD_N </b> :  Hourly average medium heavy vehicles speed (6-18h)(18-22h)(22-6h) (DOUBLE)</li>" +
-                        "<li><b> HGV_SPD_D </b><b> HGV_SPD_E </b><b> HGV_SPD_N </b> :  Hourly average heavy duty vehicles speed (6-18h)(18-22h)(22-6h) (DOUBLE)</li>" +
-                       "<li><b> JUNC_TYPE </b> : Type of junction (k=0 none, k = 1 for a crossing with traffic lights ; k = 2 for a roundabout) (INTEGER)</li>" +
-                        "<li><b> SLOPE </b> : Slope (in %) of the road section. If the field is not filled in, the LINESTRING z-values will be used to calculate the slope and the traffic direction (way field) will be force to 3 (bidirectional). (DOUBLE)</li>" +
-                        "<li><b> WAY </b> : Define the way of the road section. 1 = one way road section and the traffic goes in the same way that the slope definition you have used, 2 = one way road section and the traffic goes in the inverse way that the slope definition you have used, 3 = bi-directional traffic flow, the flow is split into two components and correct half for uphill and half for downhill (INTEGER)</li>" +
-                        "</ul></br><b> This table can be generated from the WPS Block 'Import_OSM'. </b>.",
+                        "</ul></br><b> This table can be generated from the WPS Block 'PedestrianLocalisation'. </b>.",
                 type       : String.class
+        ],
+        populationDistribution: [
+                name       : 'Population distribution',
+                title      : 'Population distribution',
+                description: "<b>This parameter allows the user to populate the area in terms of 3 different types of voice:</b>  </br>  " +
+                        "<br>  Male, Female, Children </br><ul>" +
+                        "<li><b> This is an optional input parameter</li>" +
+                        "<li><b> This variable takes the percentage (%) of male, female and children in the study area</li>" +
+                        "<li><b> The percentages should be separated by a coma (H,F,C)</li>",
+                type       : Double.class
         ]
 ]
 
@@ -152,7 +151,7 @@ def exec(Connection connection, input) {
     // Create a sql connection to interact with the database in SQL
     Sql sql = new Sql(connection)
 
-    // drop table LW_ROADS if exists and the create and prepare the table
+    // drop table LW_PEDESTRIAN if exists and then create and prepare the table
     sql.execute("drop table if exists LW_PEDESTRIAN;")
     sql.execute("create table LW_PEDESTRIAN (pk integer, the_geom Geometry, " +
             "LWD63 double precision, LWD125 double precision, LWD250 double precision, LWD500 double precision, LWD1000 double precision, LWD2000 double precision, LWD4000 double precision, LWD8000 double precision," +
@@ -178,7 +177,7 @@ def exec(Connection connection, input) {
     LDENPropagationProcessData ldenData = new LDENPropagationProcessData(null, ldenConfig)
 
 
-    // Get size of the table (number of road segments
+    // Get size of the table (number of pedestrians points)
     PreparedStatement st = connection.prepareStatement("SELECT COUNT(*) AS total FROM " + sources_table_name)
     ResultSet rs1 = st.executeQuery().unwrap(ResultSet.class)
     int nbPedestrianPoints = 0
@@ -197,9 +196,9 @@ def exec(Connection connection, input) {
             //logger.info(rs)
             Geometry geo = rs.getGeometry()
             int nbPedestrianOnPoint = rs.getDouble("NBPEDESTRIAN")
-            // Compute emission sound level for each road segment
+            // Compute emission sound level for each point source
             def results = ldenData.computeLw(rs)
-            // fill the LW_PEDESTRIAN table
+            // fill the LW_PEDESTRIAN tablem
             ps.addBatch(rs.getLong(pkIndex) as Integer, geo as Geometry,
                     70 + 10*Math.log10(nbPedestrianOnPoint) as Double, 70+ 10*Math.log10(nbPedestrianOnPoint) as Double, 70+ 10*Math.log10(nbPedestrianOnPoint) as Double,
                     70+ 10*Math.log10(nbPedestrianOnPoint) as Double, 70+ 10*Math.log10(nbPedestrianOnPoint) as Double, 70 + 10*Math.log10(nbPedestrianOnPoint) as Double,
@@ -207,10 +206,10 @@ def exec(Connection connection, input) {
         }
     }
 
-    // Add Z dimension to the road segments
+    // Add Z dimension to the pedestrian points
     sql.execute("UPDATE LW_PEDESTRIAN SET THE_GEOM = ST_UPDATEZ(The_geom,1.5);")
 
-    // Add primary key to the road table
+    // Add primary key to the pedestrian table
     sql.execute("ALTER TABLE LW_PEDESTRIAN ALTER COLUMN PK INT NOT NULL;")
     sql.execute("ALTER TABLE LW_PEDESTRIAN ADD PRIMARY KEY (PK);  ")
 

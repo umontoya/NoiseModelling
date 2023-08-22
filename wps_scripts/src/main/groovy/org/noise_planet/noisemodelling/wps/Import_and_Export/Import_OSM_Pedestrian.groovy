@@ -52,6 +52,9 @@ title = 'Import Pedestrian tables from OSM'
 description = '&#10145;&#65039; Convert <b>.osm</b>, <b>.osm.gz</b> or <b>.osm.pbf</b> file into NoiseModelling input tables.<br><br>' +
         'The following output tables will be created: <br>' +
         '- <b> BUILDINGS </b>: a table containing the buildings<br>' +
+        '- <b> PEDESTRIAN_WAYS </b>: a table containing the presence zones of pedestrians<br> +'
+        '- <b> PEDESTRIAN_POIS </b>: a table containing the points of interest in the study area<br> +'
+        '- <b> GROUND </b>: a table containing the ground<br> +'
         '&#128161; The user can choose to avoid creating some of these tables by checking the dedicated boxes'
 
 inputs = [
@@ -158,10 +161,14 @@ def exec(Connection connection, input) {
         HEIGHT real
     );''')
 
+    // Iteration over a collection of building objects, transforming and simplifying their geometries, making them valid and inserting the transformed geometries along--
+    // with the building IDs and heights into a database table named MAP_BUILDINGS_GEOM (defined before)
     for (Building_Pedestrian building: handler.buildings) {
         sql.execute("INSERT INTO " + tableName + " VALUES (" + building.id + ", ST_MakeValid(ST_SIMPLIFYPRESERVETOPOLOGY(ST_Transform(ST_GeomFromText('" + building.geom + "', 4326), "+srid+"),0.1)), " + building.height + ")")
     }
 
+    // This segment will generate a table BUILDINGS containing the following attributes: PK, THE_GEOM, HEIGHT
+    // by listing the buildings that intersects with other bigger buildings and dropping the difference.
     sql.execute('''
         CREATE SPATIAL INDEX IF NOT EXISTS BUILDINGS_INDEX ON ''' + tableName + '''(the_geom);
         -- List buildings that intersects with other buildings that have a greater area
@@ -187,26 +194,28 @@ def exec(Connection connection, input) {
     sql.execute("DROP TABLE IF EXISTS PEDESTRIAN_WAYS")
     sql.execute("CREATE TABLE PEDESTRIAN_WAYS (PK serial PRIMARY KEY, ID_WAY integer, THE_GEOM geometry, TYPE varchar);")
 
-    for (PedestrianWay pedestrianWay: handler.pedestrianWays) {
-        if (pedestrianWay.geom.isEmpty()) {
+    for (PedestrianWay pedestrianWay: handler.pedestrianWays) { // Loop that iterates through a collection of 'PedestrianWay' objects contained in the handler.pedestrianWays list
+        if (pedestrianWay.geom.isEmpty()) { // Is the geometry of the current 'PedestrianWay' object empty?
             continue;
         }
+        // for (type variableName : arrayName) {...
         String query = 'INSERT INTO PEDESTRIAN_WAYS(ID_WAY, ' +
                 'THE_GEOM, ' +
                 'TYPE ) ' +
                 ' VALUES (?,' +
                 'st_setsrid(ST_precisionreducer(ST_SIMPLIFYPRESERVETOPOLOGY(ST_TRANSFORM(ST_GeomFromText(?, 4326), '+srid+'),0.01),0.1), ' + srid + '),' +
                 '?);'
+        // Execute the SQL 'INSERT' query using the values from the current 'PedestrianWay' object.Replaces the placeholders in the SQL segment above
         sql.execute(query, [pedestrianWay.id, pedestrianWay.geom, pedestrianWay.type])
     }
     sql.execute("CREATE SPATIAL INDEX IF NOT EXISTS PEDESTRIAN_WAYS_GEOM_INDEX ON " + "PEDESTRIAN_WAYS" + "(THE_GEOM)")
 
-
+    // Creating layer PedestrianPOIs (Points of interest)
     sql.execute("DROP TABLE IF EXISTS PEDESTRIAN_POIS")
     sql.execute("CREATE TABLE PEDESTRIAN_POIS (PK serial PRIMARY KEY, ID_WAY BIGINT, THE_GEOM geometry, TYPE varchar);")
 
-    for (PedestrianPOI pedestrianPOI: handler.pedestrianPOIs) {
-        if (pedestrianPOI.geom.isEmpty()) {
+    for (PedestrianPOI pedestrianPOI: handler.pedestrianPOIs) { // Loop that iterates through a collection of 'PedestrianPOI' objects contained in the handler.pedestrianPOIs list
+        if (pedestrianPOI.geom.isEmpty()) { // Is the geometry of the current 'PedestrianWay' object empty?
             continue;
         }
         String query = 'INSERT INTO PEDESTRIAN_POIS(ID_WAY, ' +
@@ -243,8 +252,8 @@ def exec(Connection connection, input) {
 
     logger.info('SQL INSERT done')
 
-
-    String query2 = '''-- Define Road width
+    String query2 = '''
+            -- Define Road width
             DROP TABLE ROADS IF EXISTS;
             CREATE TABLE ROADS(the_geom geometry, wb float, PK INTEGER) AS SELECT
             ST_FORCE2D(the_geom),
@@ -296,26 +305,30 @@ def exec(Connection connection, input) {
             CASEWHEN(TYPE = 'unclassified', 1.5, 0))))))))))))))))))),
                 PK
                 FROM PEDESTRIAN_WAYS;
+            
+            -- wb/lt correction
+            --UPDATE ROADS SET wb = wb + '''+widthCorrection+''';
+            --UPDATE sidewalk SET lt = lt + 1;
               
             -- Create Road + Sidewalk layer
             DROP TABLE roads_sidewalk IF EXISTS;
             CREATE TABLE roads_sidewalk(the_geom geometry) AS
             SELECT ST_UNION(ST_ACCUM(ST_PRECISIONREDUCER(ST_BUFFER(a.the_geom,a.wb + 2*b.lt),0.1))) FROM ROADS a, sidewalk b WHERE a.PK = b.PK;
                
-            -- Create Road + Sidewalk layer
+            -- Create Road + Sidewalk layer (small lt)
             DROP TABLE roads_sidewalk_smalllt IF EXISTS;
             CREATE TABLE roads_sidewalk_smalllt(the_geom geometry) AS
             SELECT ST_UNION(ST_ACCUM(ST_PRECISIONREDUCER(ST_BUFFER(a.the_geom,a.wb + 2*b.lt*0.5-0.1),0.1))) FROM ROADS a, sidewalk b WHERE a.PK = b.PK;
                   
-            -- Create Road + Sidewalk layer
+            -- Create Road + Sidewalk layer (centerline)
             DROP TABLE roads_sidewalk_centerline IF EXISTS;
             CREATE TABLE roads_sidewalk_centerline(the_geom geometry) AS
             SELECT ST_ToMultiLine(ST_UNION(ST_ACCUM(ST_PRECISIONREDUCER(ST_BUFFER(a.the_geom,a.wb + 2*b.lt*0.5),0.1)))) FROM ROADS a, sidewalk b WHERE a.PK = b.PK;
             DROP TABLE sidewalk IF EXISTS;
                         
-            -- Create PedestrianNetwork
+            -- Create PedestrianNetwork (Buffer)
             DROP TABLE pedestrian_streets IF EXISTS;
-             CREATE TABLE pedestrian_streets AS SELECT ST_UNION(ST_ACCUM(ST_PRECISIONREDUCER(ST_BUFFER(the_geom,3.0),0.1))) the_geom FROM PEDESTRIAN_WAYS
+            CREATE TABLE pedestrian_streets AS SELECT ST_UNION(ST_ACCUM(ST_PRECISIONREDUCER(ST_BUFFER(the_geom,3.0),0.1))) the_geom FROM PEDESTRIAN_WAYS
             WHERE
             TYPE = 'pedestrian'
             OR TYPE = 'path'
@@ -326,9 +339,9 @@ def exec(Connection connection, input) {
             OR TYPE = 'sidewalk'
             OR TYPE = 'steps';
             
-                       -- Create PedestrianNetwork
+            -- Create PedestrianNetwork (No buffer)
             DROP TABLE pedestrian_streets_without_buffer IF EXISTS;
-             CREATE TABLE pedestrian_streets_without_buffer AS SELECT ST_UNION(ST_ACCUM(the_geom)) the_geom FROM PEDESTRIAN_WAYS
+            CREATE TABLE pedestrian_streets_without_buffer AS SELECT ST_UNION(ST_ACCUM(the_geom)) the_geom FROM PEDESTRIAN_WAYS
             WHERE
             TYPE = 'pedestrian'
             OR TYPE = 'path'
@@ -401,7 +414,7 @@ def exec(Connection connection, input) {
             SELECT ST_DIFFERENCE(b.the_geom, a.the_geom) the_geom FROM
              ROADS_AREA a,
              PEDESTRIAN_STREETS_GO_ZONES_AREA b;
-            DROP TABLE PEDESTRIAN_STREETS_GO_ZONES_AREA, ROADS, ROADS_AREA  IF EXISTS;
+            --DROP TABLE PEDESTRIAN_STREETS_GO_ZONES_AREA, ROADS, ROADS_AREA  IF EXISTS;
             
             -- Remove BUILDINGS Areas to final area
             DROP TABLE BUILDINGS_AREA IF EXISTS;
@@ -427,6 +440,7 @@ def exec(Connection connection, input) {
 
     logger.info('SQL Compute Pedestrian Areas')
 
+    // Execute the SQL query
     sql.execute(query2)
 
 
@@ -450,6 +464,8 @@ def exec(Connection connection, input) {
     return resultString
 }
 
+// OSM Handler. The class implements an interface named 'Sink'.
+// An interface defines a contract that a class agrees to fulfill. The class is required to provide concrete implementations for the methods defined in that interface
 public class OsmHandlerPedestrian implements Sink {
 
     public int nb_ways = 0;
@@ -1772,6 +1788,7 @@ public class OsmHandlerPedestrian implements Sink {
     }
 }
 
+// Buildings
 public class Building_Pedestrian {
 
     long id;
@@ -1814,6 +1831,7 @@ public class Building_Pedestrian {
     }
 }
 
+// Pedestrian Ways
 public class PedestrianWay {
 
     long id;
@@ -1873,6 +1891,7 @@ public class PedestrianWay {
     }
 }
 
+// Pedestrian POIs
 public class PedestrianPOI {
 
     long id;
@@ -1895,6 +1914,7 @@ public class PedestrianPOI {
 
 }
 
+// Ground
 public class Grounds {
 
     long id;

@@ -35,25 +35,37 @@ import org.slf4j.LoggerFactory
 import java.sql.Connection
 
 title = 'Pedestrian localisation '
-description = 'Locate some pedestrian in the city thanks to a walkable area polygon and a PointsOfInterests layer.'
+
+description =   '&#10145;&#65039; Locate some pedestrian in the city thanks to a walkable area polygon and a PointsOfInterests layer<br><br>' +
+                'The following output tables will be created: <br>' +
+                '- <b> PEDESTRIANS </b>: a table containing the pedestrians in their corresponding areas'
+
 
 inputs = [
         walkableArea : [
                 name : 'walkableArea',
                 title: 'walkableArea',
+                description: 'Walkable area polygon generated in the Import_OSM_Pedestrian script',
                 type : String.class
         ],
         cellSize             : [
                 name       : 'cellSize',
                 title      : 'cellSize',
-                description: 'cellSize',
+                description: 'Size of the grid cell used to perform the spatial density analysis KDE',
                 type       : Double.class
         ],
         pointsOfInterests: [
                 name       : 'PointsOfInterests',
-                description: 'PointsOfInterests',
+                description: 'Layer containing the points of interest in the study area issued from the Import_OSM_Pedestrian script ',
                 title      : 'PointsOfInterests',
                 type       : String.class
+        ],
+        bandwidthKDE: [
+                name       : 'bandwidthKDE',
+                description: 'Bandwidth to be used in the KDE analysis. This will modify the extent to which the KDE will search for the points of interest and therefore their density.<br> ' +
+                             'This is an optional parameter.',
+                title      : 'bandwidthKDE',
+                type       : Double.class
         ]
 ]
 
@@ -118,6 +130,12 @@ def exec(connection, input) {
         cellSize = input['cellSize']
     }
 
+    Double bwKDE = 150
+    if (input['bandwidthKDE']) {
+        bwKDE = input['bandwidthKDE']
+    }
+    logger.info("bandwidthKDE")
+
     String pointsOfInterests = "PEDESTRIAN_POIS"
     if (input['pointsOfInterests']) {
         pointsOfInterests = input['pointsOfInterests']
@@ -150,19 +168,29 @@ def exec(connection, input) {
     sql.execute("CREATE TABLE CELLGRID_ON_AREA AS SELECT c.id pk,  ST_ACCUM(ST_Intersection(zem.the_geom,c.the_geom)) the_geom FROM "+walkableArea+" zem , CELLGRID c WHERE ST_intersects(c.the_geom,zem.the_geom) AND c.the_geom && zem.the_geom GROUP BY c.id ;")
 
     sql.execute("DROP TABLE CELLGRID IF EXISTS ;")
+
      /** KDE computation**/
 
     logger.info("#########################")
     logger.info("POINTS OF INTERESTS")
 
+    // Retrieve the count of records in the table specified by the 'pointsOfInterests' variable where TYPE is 'food_drink'
+    // Result s assigned to 'food_drink_count' as integer
     int food_drink_count = sql.firstRow('SELECT COUNT(*) FROM ' + pointsOfInterests + ' WHERE \'TYPE\' = \'food_drink\'')[0] as Integer
+    // Create a new ArrayList named 'poi_food_drink' to store Point objects
     List<Point> poi_food_drink = new ArrayList<Point>()
+    // Progress tracking with 'food_drink_count' as the total number of steps, 'true' for logging and 1 for the step increment
     RootProgressVisitor KDEprogressLogger = new RootProgressVisitor(food_drink_count, true, 1)
+    // Retrieve records with columns 'pk' and 'the_geom' from the table specified by the 'pointsOfInterests' variable
+    // Iteration over each returned row by the query and processes it by using the closure defined inside the curly braces
     sql.eachRow("SELECT pk, the_geom from " + pointsOfInterests) { row ->
+      // Extract the geometry from the second column of the current row and cast it to a geometry object
       def geom = row[1] as Geometry
+      // Is the extracted geometry an instance of 'Point'? If it is, add it to the 'poi_food_drink' list
       if (geom instanceof Point) {
           poi_food_drink.add(geom)
       }
+      // Completion of the current step in the progress tracking
       KDEprogressLogger.endStep()
     }
 
@@ -176,24 +204,38 @@ def exec(connection, input) {
     logger.info("(empty) Density table POIS_DENSITY created")
     RootProgressVisitor densityprogressLogger = new RootProgressVisitor(food_drink_count, true, 1)
 
+
+    // Insert data into the 'POIS_DENSITY' table using placeholders '?'
     def qry_add_density_values = 'INSERT INTO POIS_DENSITY (pk , the_geom, density ) VALUES (?,?,?);'
+    // Batch insert operation using the SQL query defined above. It batches the insert operations in groups of 3. Why 3?
     sql.withBatch(3, qry_add_density_values) { ps ->
+        // Retrieve rows with columns 'pk' and 'the_geom' from the 'CELLGRID_ON_AREA' table
         sql.eachRow("SELECT pk, the_geom FROM  CELLGRID_ON_AREA ") { row ->
+            // Extract the current 'pk' value as an integer
             int pk = row[0] as Integer
+            // Extract current 'the_geom' value as a geometry object (polygon)
             Geometry the_poly = row[1] as Geometry
+            // Calculate the centroid of the bounding envelope of the geometry
             Point centroid = the_poly.getEnvelope().getCentroid()
-            double density = densityChatGPT(150,centroid, poi_food_drink)
+            // Uses a function called 'densityChatGPT' that is defined later in the code to calculate the density of POIs in the geometry
+            double density = densityChatGPT(bwKDE,centroid, poi_food_drink)
             logger.info("here density is " + density)
+            // Add the values 'pk', 'the_poly' and 'density' to the batch for insertion
             ps.addBatch(pk, the_poly, density)
         }
         densityprogressLogger.endStep()
     }
 
+    // Retrieve the sum of density values from the 'POIS_DENSITY' table and store in 'sum_densities' as a double
     double sum_densities =  sql.firstRow('SELECT SUM(density) FROM POIS_DENSITY')[0] as Double
 
+    // Explode polygons in order to calculate density in each polygon
     sql.execute("DROP TABLE POIS_DENSITY_POLYGONS IF EXISTS;")
     sql.execute("CREATE TABLE POIS_DENSITY_POLYGONS AS SELECT * FROM ST_EXPLODE(\'POIS_DENSITY\');")
 
+    // Retrieve the POIs in each polygon and store
+    // Calculate the probability for each point within the polygon. Multiply the density value associated with each polygon by the area of the polygon
+    // Probability of a pedestrian being present in each specific area
     sql.execute("DROP TABLE PEDESTRIANS_PROBABILITY IF EXISTS;")
     sql.execute("CREATE TABLE PEDESTRIANS_PROBABILITY AS SELECT ST_POINTONSURFACE(the_geom) the_geom , density * ST_AREA(the_geom) probability FROM POIS_DENSITY_POLYGONS;")
 
@@ -205,7 +247,14 @@ def exec(connection, input) {
     logger.info("#########################")
     logger.info("It is the time to sample")
 
+    // Sampling
     sql.execute("DROP TABLE PEDESTRIANS IF EXISTS;")
+    // Calculate the number of pedestrians 'nbPedestrian' in each area based on the 'probability' value for each area. The GREATES function ensures that there is at least one pedestrian in each area
+    // FLOOR(probability*10) Calculates the integer part of the product of 'probability' and 10
+    // RAND() < (probability*10 - FLOOR(probability*10)) Generates a random value between 0 and 1 and compares it with the fractional part of probability*10
+    // If the random value is less than the fractional part, it adds 1 pedestrian to the count; otherwise it adds 0 WHY?
+    // FROM PEDESTRIANS_PROBABILITY WHERE RAND() < probability*10 Filters the rows from PEDESTRIANS_PROBABILITY based on the condition that a random value is less than the 'probability' value * 10. This filters out areas with low probabilities.
+    // The resulting PEDESTRIANS table will contain 'the_geom' and 'nbPedestrian'
     sql.execute("CREATE TABLE PEDESTRIANS AS SELECT the_geom the_geom, GREATEST(FLOOR(probability*10)+  CASE WHEN RAND() < (probability*10 - FLOOR(probability*10)) THEN 1 ELSE 0 END,1) AS nbPedestrian FROM PEDESTRIANS_PROBABILITY WHERE RAND() < probability*10;")
     sql.execute("DROP TABLE PEDESTRIANS_PROBABILITY IF EXISTS;")
 
@@ -293,8 +342,8 @@ double densityEstimate(double[]sample_x, double[] sample_y, double [] X){
 
 
 /**
-Compute the value of the density estimate at point oocation(x,y)
-full formula oif the 2D multivariate kernel density estimate is
+Compute the value of the density estimate at point location(x,y)
+full formula of the 2D multivariate kernel density estimate is
  density = {\textstyle K_{\mathbf {H} }(\mathbf {x} )={(2\pi )^{-d/2}}\mathbf {|H|} ^{-1/2}e^{-{\frac {1}{2}}\mathbf {x^{T}} \mathbf {H^{-1}} \mathbf {x} }}
 Here H is diagonal
 **/
