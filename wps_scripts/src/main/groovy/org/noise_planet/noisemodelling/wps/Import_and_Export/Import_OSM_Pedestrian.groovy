@@ -306,9 +306,6 @@ def exec(Connection connection, input) {
                 PK
                 FROM PEDESTRIAN_WAYS;
             
-            -- wb/lt correction
-            --UPDATE ROADS SET wb = wb + '''+widthCorrection+''';
-            --UPDATE sidewalk SET lt = lt + 1;
               
             -- Create Road + Sidewalk layer
             DROP TABLE roads_sidewalk IF EXISTS;
@@ -500,13 +497,17 @@ public class OsmHandlerPedestrian implements Sink {
     }
 
     @Override
-    public void process(EntityContainer entityContainer) {
-        if (entityContainer instanceof NodeContainer) {
-            nb_nodes++;
-            Node node = ((NodeContainer) entityContainer).getEntity();
-            nodes.put(node.getId(), node);
+    public void process(EntityContainer entityContainer) { // Entity container is a higher-level container for OSM entities (nodes, ways and relations)
+        if (entityContainer instanceof NodeContainer) { // Checking if the received 'entityContainer' is an instance of NodeContainer. If it is, the container holds an OSM node
+            nb_nodes++; // Counter increment
+            Node node = ((NodeContainer) entityContainer).getEntity(); // The node entity is extracted from the entityContainer.
+            nodes.put(node.getId(), node); // Node added to mao using ID as key. Keep track of the nodes
             boolean isPedestrianPOI = false;
-            for (Tag tag : node.getTags()) {
+            for (Tag tag : node.getTags()) { // Check the tags associated with the node.
+                // It checks if the tag "tourism" exists and if its value matches certain keywords (hotel, guest house etc)
+                // If any of the conditions are met, then the node is considered a POI related to tourism_sleep
+                // A new PedestrianPOI object is created and added to the pedestrianPOIs list, counter incremented
+                // This process is repeated for other keywords as well
                 if ("tourism".equalsIgnoreCase(tag.getKey())) {
                     List list = ["hotel", "guest-house", "apartment", "hostel"]
                     if (list.any { it == (tag.getValue()) }) {
@@ -677,7 +678,7 @@ public class OsmHandlerPedestrian implements Sink {
                         nb_pedestrianPOI++;
                     }
 
-                    list = ["bank", "pharmarcy","marketplace"]
+                    list = ["bank", "pharmacy","marketplace"]
                     if (list.any { it == (tag.getValue()) }) {
                         isPedestrianPOI = true;
                         pedestrianPOIs.add(new PedestrianPOI(node, "shop"));

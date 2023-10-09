@@ -18,6 +18,7 @@
 
 package org.noise_planet.noisemodelling.wps.Experimental
 
+import crosby.binary.osmosis.OsmosisReader
 import geoserver.GeoServer
 import geoserver.catalog.Store
 import groovy.sql.Sql
@@ -29,6 +30,8 @@ import org.locationtech.jts.geom.Geometry
 import org.locationtech.jts.geom.LineString
 import org.locationtech.jts.geom.Point
 import org.noise_planet.noisemodelling.pathfinder.RootProgressVisitor
+import org.openstreetmap.osmosis.xml.common.CompressionMethod
+import org.openstreetmap.osmosis.xml.v0_6.XmlReader
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
@@ -52,7 +55,8 @@ inputs = [
                 name       : 'cellSize',
                 title      : 'cellSize',
                 description: 'Size of the grid cell used to perform the spatial density analysis KDE',
-                type       : Double.class
+                type       : Double.class,
+                min        : 0, max: 1
         ],
         pointsOfInterests: [
                 name       : 'PointsOfInterests',
@@ -65,7 +69,112 @@ inputs = [
                 description: 'Bandwidth to be used in the KDE analysis. This will modify the extent to which the KDE will search for the points of interest and therefore their density.<br> ' +
                              'This is an optional parameter.',
                 title      : 'bandwidthKDE',
-                type       : Double.class
+                type       : Double.class,
+                min        : 0, max: 1
+        ],
+        coeffLeisure: [
+                name       : 'coeffLeisure',
+                description: 'Weight/coefficient of the Leisure points of interest in the linear regression.<br> ' +
+                        'This is an optional parameter.',
+                title      : 'coeffLeisure',
+                type       : Double.class,
+                min        : 0, max: 1
+        ],
+        coeffCulture: [
+                name       : 'coeffCulture',
+                description: 'Weight/coefficient of the Culture points of interest in the linear regression.<br> ' +
+                        'This is an optional parameter.',
+                title      : 'coeffCulture',
+                type       : Double.class,
+                min        : 0, max: 1
+        ],
+        coeffFoodDrink: [
+                name       : 'coeffFoodDrink',
+                description: 'Weight/coefficient of the Food_Drink points of interest in the linear regression.<br> ' +
+                        'This is an optional parameter.',
+                title      : 'coeffFoodDrink',
+                type       : Double.class,
+                min        : 0, max: 1
+        ],
+        coeffEducation: [
+                name       : 'coeffEducation',
+                description: 'Weight/coefficient of the Education points of interest in the linear regression.<br> ' +
+                        'This is an optional parameter.',
+                title      : 'coeffEducation',
+                type       : Double.class,
+                min        : 0, max: 1
+        ],
+        coeffFootpath: [
+                name       : 'coeffFootpath',
+                description: 'Weight/coefficient of the Footpath points of interest in the linear regression.<br> ' +
+                        'This is an optional parameter.',
+                title      : 'coeffFootpath',
+                type       : Double.class,
+                min        : 0, max: 1
+        ],
+        coeffTourismSleep: [
+                name       : 'coeffTourismSleep',
+                description: 'Weight/coefficient of the Tourism_Sleep points of interest in the linear regression.<br> ' +
+                        'This is an optional parameter.',
+                title      : 'coeffTourismSleep',
+                type       : Double.class,
+                min        : 0, max: 1
+        ],
+        coeffPublicTransport: [
+                name       : 'coeffPublicTransport',
+                description: 'Weight/coefficient of the Public_Transport points of interest in the linear regression.<br> ' +
+                        'This is an optional parameter.',
+                title      : 'coeffPublicTransport',
+                type       : Double.class,
+                min        : 0, max: 1
+        ],
+        coeffReligion: [
+                name       : 'coeffReligion',
+                description: 'Weight/coefficient of the Religion points of interest in the linear regression.<br> ' +
+                        'This is an optional parameter.',
+                title      : 'coeffReligion',
+                type       : Double.class,
+                min        : 0, max: 1
+        ],
+        coeffTourism: [
+                name       : 'coeffTourism',
+                description: 'Weight/coefficient of the Tourism points of interest in the linear regression.<br> ' +
+                        'This is an optional parameter.',
+                title      : 'coeffTourism',
+                type       : Double.class,
+                min        : 0, max: 1
+        ],
+        coeffShop: [
+                name       : 'coeffShop',
+                description: 'Weight/coefficient of the Shop points of interest in the linear regression.<br> ' +
+                        'This is an optional parameter.',
+                title      : 'coeffShop',
+                type       : Double.class,
+                min        : 0, max: 1
+        ],
+        coeffSport: [
+                name       : 'coeffSport',
+                description: 'Weight/coefficient of the Sport points of interest in the linear regression.<br> ' +
+                        'This is an optional parameter.',
+                title      : 'coeffSport',
+                type       : Double.class,
+                min        : 0, max: 1
+        ],
+        coeffTrees: [
+                name       : 'coeffTrees',
+                description: 'Weight/coefficient of the Trees points of interest in the linear regression.<br> ' +
+                        'This is an optional parameter.',
+                title      : 'coeffTrees',
+                type       : Double.class,
+                min        : 0, max: 1
+        ],
+        coeffIndTransport: [
+                name       : 'coeffIndTransport',
+                description: 'Weight/coefficient of the Individual_Transport points of interest in the linear regression.<br> ' +
+                        'This is an optional parameter.',
+                title      : 'coeffIndTransport',
+                type       : Double.class,
+                min        : 0, max: 1
         ]
 ]
 
@@ -117,6 +226,72 @@ def exec(connection, input) {
     logger.info('Start : Sampling Pietons')
     logger.info("inputs {}", input) // log inputs of the run
 
+    // Defining input variables
+    Double coeffLeisure = 1
+    if (input['coeffLeisure']) {
+        coeffLeisure = input['coeffLeisure']
+    }
+
+    Double coeffCulture = 1
+    if (input['coeffCulture']) {
+        coeffCulture = input['coeffCulture']
+    }
+
+    Double coeffFoodDrink = 1
+    if (input['coeffFoodDrink']) {
+        coeffFoodDrink = input['coeffFoodDrink']
+    }
+
+    Double coeffEducation = 1
+    if (input['coeffEducation']) {
+        coeffEducation = input['coeffEducation']
+    }
+
+    Double coeffFootpath = 1
+    if (input['coeffFootpath']) {
+        coeffFootpath = input['coeffFootpath']
+    }
+
+    Double coeffTourismSleep = 1
+    if (input['coeffTourismSleep']) {
+        coeffTourismSleep = input['coeffTourismSleep']
+    }
+
+    Double coeffPublicTransport = 1
+    if (input['coeffPublicTransport']) {
+        coeffPublicTransport = input['coeffPublicTransport']
+    }
+
+    Double coeffReligion = 1
+    if (input['coeffReligion']) {
+        coeffReligion = input['coeffReligion']
+    }
+
+    Double coeffTourism = 1
+    if (input['coeffTourism']) {
+        coeffTourism = input['coeffTourism']
+    }
+
+    Double coeffShop = 1
+    if (input['coeffShop']) {
+        coeffShop = input['coeffShop']
+    }
+
+    Double coeffSport = 1
+    if (input['coeffSport']) {
+        coeffSport = input['coeffSport']
+    }
+
+    Double coeffTrees = 1
+    if (input['coeffTrees']) {
+        coeffTrees = input['coeffTrees']
+    }
+
+    Double coeffIndTransport = 1
+    if (input['coeffIndTransport']) {
+        coeffIndTransport = input['coeffIndTransport']
+    }
+
 
     String walkableArea = "PEDESTRIAN_AREA"
     if (input['walkableArea']) {
@@ -141,7 +316,6 @@ def exec(connection, input) {
         pointsOfInterests = input['pointsOfInterests']
     }
     pointsOfInterests = pointsOfInterests.toUpperCase()
-
 
     Sql sql = new Sql(connection)
 
@@ -178,25 +352,92 @@ def exec(connection, input) {
     // Result s assigned to 'food_drink_count' as integer
     int food_drink_count = sql.firstRow('SELECT COUNT(*) FROM ' + pointsOfInterests + ' WHERE \'TYPE\' = \'food_drink\'')[0] as Integer
     // Create a new ArrayList named 'poi_food_drink' to store Point objects
+    List<Point> poi_leisure = new ArrayList<Point>()
+    List<Point> poi_culture = new ArrayList<Point>()
     List<Point> poi_food_drink = new ArrayList<Point>()
+    List<Point> poi_education = new ArrayList<Point>()
+    List<Point> poi_footpath = new ArrayList<Point>()
+    List<Point> poi_tourism_sleep = new ArrayList<Point>()
+    List<Point> poi_public_transport = new ArrayList<Point>()
+    List<Point> poi_religion = new ArrayList<Point>()
+    List<Point> poi_tourism = new ArrayList<Point>()
+    List<Point> poi_shop = new ArrayList<Point>()
+    List<Point> poi_sport = new ArrayList<Point>()
+    List<Point> poi_trees = new ArrayList<Point>()
+    List<Point> poi_individual_transport = new ArrayList<Point>()
     // Progress tracking with 'food_drink_count' as the total number of steps, 'true' for logging and 1 for the step increment
     RootProgressVisitor KDEprogressLogger = new RootProgressVisitor(food_drink_count, true, 1)
     // Retrieve records with columns 'pk' and 'the_geom' from the table specified by the 'pointsOfInterests' variable
     // Iteration over each returned row by the query and processes it by using the closure defined inside the curly braces
-    sql.eachRow("SELECT pk, the_geom from " + pointsOfInterests) { row ->
+    sql.eachRow("SELECT pk, the_geom, type from " + pointsOfInterests) { row ->
       // Extract the geometry from the second column of the current row and cast it to a geometry object
       def geom = row[1] as Geometry
+      def type = row[2] as String
       // Is the extracted geometry an instance of 'Point'? If it is, add it to the 'poi_food_drink' list
       if (geom instanceof Point) {
-          poi_food_drink.add(geom)
+
+          switch(type){
+              case "leisure":
+                  poi_leisure.add(geom)
+                  break
+
+              case "culture":
+                  poi_culture.add(geom)
+                  break
+
+              case "food_drink":
+                  poi_food_drink.add(geom)
+                  break
+
+              case "education":
+                  poi_education.add(geom)
+                  break
+
+              case "footpath":
+                  poi_footpath.add(geom)
+                  break
+
+              case "tourism_sleep":
+                  poi_tourism_sleep.add(geom)
+                  break
+
+              case "public_transport":
+                  poi_public_transport.add(geom)
+                  break
+
+              case "religion":
+                  poi_religion.add(geom)
+                  break
+
+              case "tourism":
+                  poi_tourism.add(geom)
+                  break
+
+              case "shop":
+                  poi_shop.add(geom)
+                  break
+
+              case "sport":
+                  poi_sport.add(geom)
+                  break
+
+              case "trees":
+                  poi_trees.add(geom)
+                  break
+
+              case "individual_transport":
+                  poi_individual_transport.add(geom)
+                  break
+          }
+
       }
       // Completion of the current step in the progress tracking
       KDEprogressLogger.endStep()
     }
 
-    logger.info("taille de la liste de points d'intérêt" + poi_food_drink.size())
+    //logger.info("taille de la liste de points d'intérêt" + poi_leisure.size() + poi_culture.size() + poi_food_drink.size() + poi_education.size() + poi_footpath.size() + poi_tourism_sleep.size() + poi_public_transport.size() + poi_religion.size())
 
-
+    //ATTENTION ICI. PROBABLEMENT IL FAUT RAJOUTER TYPE?
     sql.execute("DROP TABLE POIS_DENSITY IF EXISTS;")
     sql.execute("CREATE TABLE POIS_DENSITY (pk INTEGER , the_geom GEOMETRY, density FLOAT) ;")
 
@@ -218,8 +459,12 @@ def exec(connection, input) {
             // Calculate the centroid of the bounding envelope of the geometry
             Point centroid = the_poly.getEnvelope().getCentroid()
             // Uses a function called 'densityChatGPT' that is defined later in the code to calculate the density of POIs in the geometry
-            double density = densityChatGPT(bwKDE,centroid, poi_food_drink)
-            logger.info("here density is " + density)
+            double density = coeffLeisure*densityChatGPT(bwKDE,centroid, poi_leisure) + coeffCulture*densityChatGPT(bwKDE,centroid, poi_culture) + coeffFoodDrink*densityChatGPT(bwKDE,centroid, poi_food_drink)
+            + coeffEducation*densityChatGPT(bwKDE,centroid, poi_education) + coeffFootpath*densityChatGPT(bwKDE,centroid, poi_footpath) + coeffTourismSleep*densityChatGPT(bwKDE,centroid, poi_tourism_sleep)
+            + coeffPublicTransport*densityChatGPT(bwKDE,centroid, poi_public_transport) + coeffReligion*densityChatGPT(bwKDE,centroid, poi_religion) + coeffTourism*densityChatGPT(bwKDE,centroid, poi_tourism)
+            + coeffShop*densityChatGPT(bwKDE,centroid, poi_shop) + coeffSport*densityChatGPT(bwKDE,centroid, poi_sport) + coeffTrees*densityChatGPT(bwKDE,centroid, poi_trees) + coeffIndTransport*densityChatGPT(bwKDE,centroid, poi_individual_transport)
+
+            //logger.info("here density is " + density)
             // Add the values 'pk', 'the_poly' and 'density' to the batch for insertion
             ps.addBatch(pk, the_poly, density)
         }
@@ -239,7 +484,7 @@ def exec(connection, input) {
     sql.execute("DROP TABLE PEDESTRIANS_PROBABILITY IF EXISTS;")
     sql.execute("CREATE TABLE PEDESTRIANS_PROBABILITY AS SELECT ST_POINTONSURFACE(the_geom) the_geom , density * ST_AREA(the_geom) probability FROM POIS_DENSITY_POLYGONS;")
 
-    sql.execute("DROP TABLE POIS_DENSITY_POLYGONS,POIS_DENSITY,CELLGRID_ON_AREA IF EXISTS;")
+    //sql.execute("DROP TABLE POIS_DENSITY_POLYGONS,POIS_DENSITY,CELLGRID_ON_AREA IF EXISTS;")
 
 
     logger.info("somme des densités"+ sum_densities )
@@ -249,7 +494,7 @@ def exec(connection, input) {
 
     // Sampling
     sql.execute("DROP TABLE PEDESTRIANS IF EXISTS;")
-    // Calculate the number of pedestrians 'nbPedestrian' in each area based on the 'probability' value for each area. The GREATES function ensures that there is at least one pedestrian in each area
+    // Calculate the number of pedestrians 'nbPedestrian' in each area based on the 'probability' value for each area. The GREATEST function ensures that there is at least one pedestrian in each area
     // FLOOR(probability*10) Calculates the integer part of the product of 'probability' and 10
     // RAND() < (probability*10 - FLOOR(probability*10)) Generates a random value between 0 and 1 and compares it with the fractional part of probability*10
     // If the random value is less than the fractional part, it adds 1 pedestrian to the count; otherwise it adds 0 WHY?
@@ -276,6 +521,8 @@ def exec(connection, input) {
  * @return
  */
 double densityChatGPT(double bandwidth , Point location, List<Point> poi ){
+    //double density = 0
+    if (!poi.isEmpty()) {
     // Compute the distances between the target point and all input objects
     List<Double> distances = poi.collect { object ->
        // new DistanceToPoint(object).computeDistance(location,object,)
@@ -288,10 +535,11 @@ double densityChatGPT(double bandwidth , Point location, List<Point> poi ){
     }.sum()
 
     //double density = kernelSum / (Math.sqrt(2 * Math.PI) * bandwidth * poi.size())
-    double density = kernelSum / (Math.PI * 2 * bandwidth*bandwidth)
+    density = kernelSum / (Math.PI * 2 * bandwidth*bandwidth)
+    }
+
     return density
 }
-
 
 
 double density_2(Point location, List<Point> poi ){
