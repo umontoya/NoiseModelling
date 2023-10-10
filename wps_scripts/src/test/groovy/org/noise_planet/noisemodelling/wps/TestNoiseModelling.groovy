@@ -20,7 +20,9 @@ import org.h2gis.utilities.JDBCUtilities
 import org.junit.Test
 import org.noise_planet.noisemodelling.wps.Database_Manager.Display_Database
 import org.noise_planet.noisemodelling.wps.Experimental.PedestrianLocalisation
+import org.noise_planet.noisemodelling.wps.Experimental_Matsim.Noise_From_Attenuation_Matrix
 import org.noise_planet.noisemodelling.wps.Geometric_Tools.Set_Height
+import org.noise_planet.noisemodelling.wps.Geometric_Tools.ZerodB_Source_From_Roads
 import org.noise_planet.noisemodelling.wps.Import_and_Export.Import_File
 import org.noise_planet.noisemodelling.wps.Import_and_Export.Export_Table
 import org.noise_planet.noisemodelling.wps.Import_and_Export.Import_OSM_Pedestrian
@@ -92,25 +94,40 @@ class TestNoiseModelling extends JdbcTestCase {
                 "tablePedestrian"      : "PEDESTRIANS"])
 
         new Building_Grid().exec(connection,  ["tableBuilding"  : "BUILDINGS",
-                                               "sourcesTableName": "T5",
+                                               "sourcesTableName": "T6",
                                                "delta"           : 25,
                                                "height"           : 1.5])
 
+        new ZerodB_Source_From_Roads().exec(connection,
+                ["roadsTableName" : "T6",
+                 "sourcesTableName": "T6_Zero"])
+
         new Noise_level_from_source().exec(connection,
                 ["tableBuilding"   : "BUILDINGS",
-                 "tableSources"   : "T5",
+                 "tableSources"   : "T6_Zero",
                  "tableReceivers": "RECEIVERS",
-                 "confMaxSrcDist" : 500,
-                 "confMaxReflDist": 100,
+                 "confMaxSrcDist" : 150,
+                 "confMaxReflDist": 25,
                  "confSkipLevening": true,
                  "confSkipLnight": true,
-                 "confSkipLden": true])
+                 "confSkipLden": true,
+                 "confExportSourceId": true])
+
+        new Noise_From_Attenuation_Matrix().exec(connection,
+                ["matsimRoads" : "T6_Geom",
+                 "matsimRoadsLw": "T6_LW",
+                 "receiversTable" : "RECEIVERS",
+                 "attenuationTable" : "LDAY_GEOM",
+                 "timeBinSize" : 500,
+                 "outTableName" : "PEDESTRIANS_LVLS"])
 
         new Export_Table().exec(connection,
-                ["exportPath"   : "target/T5_TEST.shp",
-                 "tableToExport": "LDAY_GEOM"])
+                ["exportPath"   : "target/PEDESTRIAN_LVLS.shp",
+                 "tableToExport": "PEDESTRIANS_LVLS"])
+
 
 /*
+
 
 
         new Set_Height().exec(connection,  ["tableName"     : "LW_PEDESTRIAN",

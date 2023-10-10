@@ -68,7 +68,7 @@ inputs = [
             title: 'The size of time bins in seconds.',
             description: 'This parameter dictates the time resolution of the resulting data ' +
                     '<br/>The time information stored will be the starting time of the time bins ' +
-                    '<br/>For exemple with a timeBinSize of 3600, the data will be analysed using the following timeBins: ' +
+                    '<br/>For example with a timeBinSize of 3600, the data will be analysed using the following timeBins: ' +
                     '<br/>0, 3600, 7200, ..., 79200, 82800',
             type: Integer.class
     ],
@@ -170,7 +170,7 @@ def exec(Connection connection, input) {
     ensureIndex(connection, matsimRoadsLw, "LINK_ID", false)
     ensureIndex(connection, matsimRoadsLw, "TIME", false)
 
-    List<String> mrs_freqs = ["LW63", "LW125", "LW250", "LW500", "LW1000", "LW2000", "LW4000", "LW8000"]
+    List<String> mrs_freqs = ["LWD63", "LWD125", "LWD250", "LWD500", "LWD1000", "LWD2000", "LWD4000", "LWD8000"]
 
     long count = 0, do_print = 1
     List<GroovyRowResult> receivers_res = sql.rows("SELECT * FROM " + receiversTable);

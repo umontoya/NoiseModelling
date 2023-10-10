@@ -286,6 +286,23 @@ def exec(Connection connection, input) {
     // Add primary key to the pedestrian table
     sql.execute("ALTER TABLE LW_PEDESTRIAN ALTER COLUMN PK INT NOT NULL;")
     sql.execute("ALTER TABLE LW_PEDESTRIAN ADD PRIMARY KEY (PK);  ")
+    // Clean the unused attributes in T5
+    sql.execute("ALTER TABLE T5 DROP COLUMN NBPEDESTRIAN, AUDIOFILEID, ID_G, ID_FILE, ALPHA;")
+
+    // In order to produce a dynamic map, we will follow the architecture of the Matsim script
+    // This will require to "separate" T5 in 2 different tables: One containing the geometry and the other one containing the sound power levels
+    // These 2 tables will be "linked" by a LINK_ID attribute
+    sql.execute("ALTER TABLE T5 ADD COLUMN LINK_ID INT;") // We add the LINK_ID column
+    sql.execute("SET @counter = 0;") // We initialize a counter for LINK_ID
+    sql.execute("UPDATE T5 SET LINK_ID = (@counter := @counter + 1);") // We update the LINK_ID column
+
+    // Now we are going to "divide" our T5 table in T5_geom (geometries) and T5_Lw (Sound levels)
+    // First, we obtain T5_LW (PK, LINK_ID, LWD..., TIME)
+    sql.execute("CREATE TABLE T5_LW AS (SELECT PK, LINK_ID, LWD63, LWD125, LWD250, LWD500, LWD1000, LWD2000, LWD4000, LWD8000, T FROM T5);")
+    sql.execute("ALTER TABLE T5_LW RENAME COLUMN T TO TIME; ") // We rename the column T to TIME
+
+    // Then, we obtain T5_geom (PK, LINK_ID, THE_GEOM)
+    sql.execute("CREATE TABLE T5_geom AS (SELECT PK, LINK_ID, THE_GEOM FROM T5);")
 
     resultString = "Calculation Done ! The table LW_PEDESTRIAN has been created."
 
